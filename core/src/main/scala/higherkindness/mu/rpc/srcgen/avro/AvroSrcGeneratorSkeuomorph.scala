@@ -1,10 +1,12 @@
 package higherkindness.mu.rpc.srcgen.avro
 
 import java.io.File
+import java.nio.file.{Path, Paths}
 
 import avrohugger.format.Standard
 import avrohugger.input.parsers.FileInputParser
 import avrohugger.stores.ClassStore
+import cats.data.NonEmptyList
 import higherkindness.mu.rpc.srcgen.Model.{
   CompressionTypeGen,
   Fs2Stream,
@@ -14,7 +16,7 @@ import higherkindness.mu.rpc.srcgen.Model.{
   StreamingImplementation,
   UseIdiomaticEndpoints
 }
-import higherkindness.mu.rpc.srcgen.{ErrorsOr, Model, ScalaFileExtension, SrcGenerator}
+import higherkindness.mu.rpc.srcgen.{ErrorsOr, Generator, Model, ScalaFileExtension, SrcGenerator}
 import org.apache.avro.Protocol
 import cats.implicits._
 import higherkindness.droste.data.Mu
@@ -22,15 +24,14 @@ import higherkindness.skeuomorph.avro.{AvroF, Protocol => AvroProtocol}
 import higherkindness.skeuomorph.mu.{CompressionType, MuF, codegen, Protocol => MuProtocol}
 
 import scala.meta._
+import scala.util.Try
 
 object AvroSrcGeneratorSkeuomorph {
   def build(
       compressionTypeGen: CompressionTypeGen,
       useIdiomaticEndpoints: UseIdiomaticEndpoints,
-      streamingImplementation: StreamingImplementation,
-      idlTargetDir: File
+      streamingImplementation: StreamingImplementation
   ): SrcGenerator = new SrcGenerator {
-    private val _                       = idlTargetDir
     private val classStore              = new ClassStore
     private val classLoader             = getClass.getClassLoader
     override def idlType: Model.IdlType = Model.IdlType.Avro
@@ -41,7 +42,7 @@ object AvroSrcGeneratorSkeuomorph {
     override protected def generateFrom(
         inputFile: File,
         serializationType: Model.SerializationType
-    ): Option[(String, ErrorsOr[List[String]])] = {
+    ): Option[ErrorsOr[Generator.Output]] = {
       val nativeAvroProtocol: ErrorsOr[Protocol] =
         (new FileInputParser)
           .getSchemaOrProtocols(inputFile, Standard, classStore, classLoader)
@@ -52,7 +53,12 @@ object AvroSrcGeneratorSkeuomorph {
         }
 
       val skeuomorphAvroProtocol: ErrorsOr[AvroProtocol[Mu[AvroF]]] =
-        nativeAvroProtocol.map(p => AvroProtocol.fromProto[Mu[AvroF]](p))
+        nativeAvroProtocol.andThen(p =>
+          Try(AvroProtocol.fromProto[Mu[AvroF]](p)).toEither.toValidatedNel
+            .leftMap { ts: NonEmptyList[Throwable] =>
+              ts.map(_.getMessage)
+            }
+        )
 
       val skeuomorphCompression: CompressionType = compressionTypeGen match {
         case GzipGen          => CompressionType.Gzip
@@ -80,16 +86,15 @@ object AvroSrcGeneratorSkeuomorph {
             .toValidatedNel
             .map(_.syntax.split("\n").toList)
 
-        (outputFilePath, stringified)
+        stringified.map(Generator.Output(outputFilePath, _))
       }
-
       source.toOption
     }
   }
-  private def getPath(p: AvroProtocol[Mu[AvroF]]): String = {
-    val path: List[String] =
+  private def getPath(p: AvroProtocol[Mu[AvroF]]): Path = {
+    val fst :: rest =
       p.namespace.map(_.split('.').toList).toList.flatten :+ s"${p.name}${ScalaFileExtension}"
-    path.mkString(File.separator)
+    Paths.get(fst, rest: _*)
   }
 
 }

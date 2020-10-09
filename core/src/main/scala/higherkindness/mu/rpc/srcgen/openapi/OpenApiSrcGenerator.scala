@@ -61,8 +61,10 @@ object OpenApiSrcGenerator {
       protected def generateFrom(
           inputFile: File,
           serializationType: Model.SerializationType
-      ): Option[(String, ErrorsOr[List[String]])] =
-        getCode[IO](inputFile).value.unsafeRunSync()
+      ): Option[ErrorsOr[Generator.Output]] =
+        getCode[IO](inputFile).value.unsafeRunSync().map { case (p, c) =>
+          c.map(Generator.Output(Paths.get(p), _))
+        }
 
       private def getCode[F[_]: Sync](
           file: File

@@ -16,18 +16,14 @@
 
 package higherkindness.mu.rpc.srcgen
 
-import cats.data.Validated
-import cats.data.Validated.Valid
+import java.io.File
 
-import scala.io._
+import cats.data.Validated
+
 import higherkindness.mu.rpc.srcgen.AvroScalaGeneratorArbitrary._
+import higherkindness.mu.rpc.srcgen.Generator.Result
 import higherkindness.mu.rpc.srcgen.Model.SerializationType.Avro
-import higherkindness.mu.rpc.srcgen.Model.{
-  BigDecimalAvroMarshallers,
-  NoCompressionGen,
-  ScalaBigDecimalTaggedGen,
-  UseIdiomaticEndpoints
-}
+import higherkindness.mu.rpc.srcgen.Model.{MonixObservable, NoCompressionGen, UseIdiomaticEndpoints}
 import higherkindness.mu.rpc.srcgen.avro._
 import org.scalacheck.Prop.forAll
 import org.scalatest._
@@ -46,23 +42,18 @@ class AvroSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest 
     }
 
     "return a non-empty list of errors instead of generating code from an invalid IDL file" in {
-      val response = {
-        AvroSrcGenerator(
-          List(BigDecimalAvroMarshallers),
-          ScalaBigDecimalTaggedGen,
-          NoCompressionGen,
-          UseIdiomaticEndpoints.trueV
-        ).generateFrom(
-          Source.fromInputStream(getClass.getResourceAsStream("/avro/Invalid.avdl")).mkString,
-          Avro
-        )
-      }
+      val response =
+        AvroSrcGeneratorSkeuomorph
+          .build(NoCompressionGen, UseIdiomaticEndpoints.trueV, MonixObservable)
+          .generateFrom(Set(new File(getClass.getResource("/avro/Invalid.avdl").toURI)), Avro)
 
-      response shouldBe Some(
-        (
-          "foo/bar/MyGreeterService.scala",
-          Validated.invalidNel(
-            "RPC method response parameter has non-record response type 'STRING'"
+      response shouldBe List(
+        Some(
+          (
+            "foo/bar/MyGreeterService.scala",
+            Validated.invalidNel(
+              "Encountered an unsupported response type: Skeuomorph only supports Record types for Avro responses. Encountered response schema with type STRING"
+            )
           )
         )
       )
@@ -70,20 +61,21 @@ class AvroSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest 
   }
 
   private def test(scenario: Scenario): Boolean = {
-    val output =
-      AvroSrcGenerator(
-        scenario.marshallersImports,
-        ScalaBigDecimalTaggedGen,
-        scenario.compressionTypeGen,
-        scenario.useIdiomaticEndpoints
-      ).generateFrom(
-        Source.fromInputStream(getClass.getResourceAsStream(scenario.inputResourcePath)).mkString,
-        scenario.serializationType
-      )
-    output should not be empty
-    output forall { case (filePath, contents) =>
+    val results =
+      AvroSrcGeneratorSkeuomorph
+        .build(
+          scenario.compressionTypeGen,
+          scenario.useIdiomaticEndpoints,
+          MonixObservable
+        )
+        .generateFrom(
+          Set(new File(getClass.getResource(scenario.inputResourcePath).toURI)),
+          scenario.serializationType
+        )
+    results should not be empty
+    results forall { case Result(filePath, errorsOrOutput) =>
       filePath shouldBe scenario.expectedOutputFilePath
-      contents.map(_.filter(_.length > 0)) shouldBe Valid(scenario.expectedOutput)
+      errorsOrOutput.map(output => output.contents shouldBe scenario.expectedOutput)
       true
     }
   }

@@ -17,14 +17,13 @@
 package higherkindness.mu.rpc.srcgen.proto
 
 import java.io.File
+import java.nio.file.Paths
 
 import scala.meta._
 import scala.util.control.NoStackTrace
-
 import cats.effect.{IO, Sync}
 import cats.syntax.flatMap._
 import cats.data.Validated._
-
 import higherkindness.droste.data.Mu
 import higherkindness.droste.data.Mu._
 import higherkindness.mu.rpc.srcgen.Model._
@@ -62,8 +61,10 @@ object ProtoSrcGenerator {
       def generateFrom(
           inputFile: File,
           serializationType: SerializationType
-      ): Option[(String, ErrorsOr[List[String]])] =
-        getCode[IO](inputFile).map(Some(_)).unsafeRunSync
+      ): Option[ErrorsOr[Generator.Output]] =
+        getCode[IO](inputFile).map(Some(_)).unsafeRunSync.map { case (p, c) =>
+          c.map(Generator.Output(Paths.get(p), _))
+        }
 
       val streamCtor: (Type, Type) => Type.Apply = streamingImplementation match {
         case Fs2Stream       => { case (f, a) => t"_root_.fs2.Stream[$f, $a]" }
