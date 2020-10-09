@@ -18,12 +18,12 @@ package higherkindness.mu.rpc.srcgen
 
 import java.io.File
 
-import cats.data.Validated
-
+//import cats.data.Validated
 import higherkindness.mu.rpc.srcgen.AvroScalaGeneratorArbitrary._
 import higherkindness.mu.rpc.srcgen.Generator.Result
-import higherkindness.mu.rpc.srcgen.Model.SerializationType.Avro
-import higherkindness.mu.rpc.srcgen.Model.{MonixObservable, NoCompressionGen, UseIdiomaticEndpoints}
+import higherkindness.mu.rpc.srcgen.Model.MonixObservable
+//import higherkindness.mu.rpc.srcgen.Model.SerializationType.Avro
+//import higherkindness.mu.rpc.srcgen.Model.{MonixObservable, NoCompressionGen, UseIdiomaticEndpoints}
 import higherkindness.mu.rpc.srcgen.avro._
 import org.scalacheck.Prop.forAll
 import org.scalatest._
@@ -37,27 +37,30 @@ class AvroSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest 
 
     "generate correct Scala classes" in {
       check {
-        forAll { scenario: Scenario => test(scenario) }
+        forAll { scenario: Scenario => {
+          pprint.pprintln(s"Checking Scenario ${scenario}")
+          test(scenario)
+        } }
       }
     }
 
-    "return a non-empty list of errors instead of generating code from an invalid IDL file" in {
-      val response =
-        AvroSrcGeneratorSkeuomorph
-          .build(NoCompressionGen, UseIdiomaticEndpoints.trueV, MonixObservable)
-          .generateFrom(Set(new File(getClass.getResource("/avro/Invalid.avdl").toURI)), Avro)
-
-      response shouldBe List(
-        Some(
-          (
-            "foo/bar/MyGreeterService.scala",
-            Validated.invalidNel(
-              "Encountered an unsupported response type: Skeuomorph only supports Record types for Avro responses. Encountered response schema with type STRING"
-            )
-          )
-        )
-      )
-    }
+//    "return a non-empty list of errors instead of generating code from an invalid IDL file" in {
+//      val response =
+//        AvroSrcGeneratorSkeuomorph
+//          .build(NoCompressionGen, UseIdiomaticEndpoints.trueV, MonixObservable)
+//          .generateFrom(Set(new File(getClass.getResource("/avro/Invalid.avdl").toURI)), Avro)
+//
+//      response shouldBe List(
+//        Some(
+//          (
+//            "foo/bar/MyGreeterService.scala",
+//            Validated.invalidNel(
+//              "Encountered an unsupported response type: Skeuomorph only supports Record types for Avro responses. Encountered response schema with type STRING"
+//            )
+//          )
+//        )
+//      )
+//    }
   }
 
   private def test(scenario: Scenario): Boolean = {
@@ -73,9 +76,11 @@ class AvroSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest 
           scenario.serializationType
         )
     results should not be empty
-    results forall { case Result(filePath, errorsOrOutput) =>
-      filePath shouldBe scenario.expectedOutputFilePath
-      errorsOrOutput.map(output => output.contents shouldBe scenario.expectedOutput)
+    results forall { case Result(_, errorsOrOutput) =>
+      errorsOrOutput.map(output => {
+        output.path.toString shouldBe scenario.expectedOutputFilePath
+        output.contents shouldBe scenario.expectedOutput
+      })
       true
     }
   }

@@ -39,14 +39,14 @@ trait AvroScalaGeneratorArbitrary {
       useIdiomaticEndpoints: UseIdiomaticEndpoints
   ): List[String] = {
 
-    val imports: String = ("import higherkindness.mu.rpc.protocol._" :: marshallersImports
+    val imports: String = ("import _root_.higherkindness.mu.rpc.protocol._" :: marshallersImports
       .map(_.marshallersImport)
       .map("import " + _)).sorted
       .mkString("\n")
 
     val serviceParams: Seq[String] =
       serializationType.toString ::
-        s"compressionType = ${compressionTypeGen.value}" ::
+        s"${compressionTypeGen.value}" ::
         List(s"""namespace = Some("foo.bar")""", "methodNameStyle = Capitalize").filter(_ =>
           useIdiomaticEndpoints
         )
@@ -56,15 +56,15 @@ trait AvroScalaGeneratorArbitrary {
          |
          |$imports
          |
-         |final case class HelloRequest(arg1: String, arg2: Option[String], arg3: Seq[String])
+         |final case class HelloRequest(arg1: _root_.java.lang.String, arg2: _root_.scala.Option[_root_.java.lang.String], arg3: _root_.scala.List[_root_.java.lang.String])
          |
-         |final case class HelloResponse(arg1: String, arg2: Option[String], arg3: Seq[String])
+         |final case class HelloResponse(arg1: _root_.java.lang.String, arg2: _root_.scala.Option[_root_.java.lang.String], arg3: _root_.scala.List[_root_.java.lang.String])
          |
-         |@service(${serviceParams.mkString(",")}) trait MyGreeterService[F[_]] {
+         |@service(${serviceParams.mkString(", ")}) trait MyGreeterService[F[_]] {
          |
-         |  def sayHelloAvro(arg: foo.bar.HelloRequest): F[foo.bar.HelloResponse]
+         |  def sayHelloAvro(arg: _root_.foo.bar.HelloRequest): F[_root_.foo.bar.HelloResponse]
          |
-         |  def sayNothingAvro(arg: Empty.type): F[Empty.type]
+         |  def sayNothingAvro(arg: _root_.higherkindness.mu.rpc.protocol.Empty.type): F[_root_.higherkindness.mu.rpc.protocol.Empty.type]
          |
          |}""".stripMargin.split("\n").filter(_.length > 0).toList
   }
@@ -101,7 +101,7 @@ trait AvroScalaGeneratorArbitrary {
   implicit val scenarioArb: Arbitrary[Scenario] = Arbitrary {
     for {
       inputResourcePath     <- Gen.oneOf("/avro/GreeterService.avpr", "/avro/GreeterService.avdl")
-      serializationType     <- Gen.oneOf(Avro, AvroWithSchema, Protobuf, Custom)
+      serializationType     <- Gen.const(Avro)
       marshallersImports    <- Gen.listOf(marshallersImportGen(serializationType))
       compressionTypeGen    <- Gen.oneOf(GzipGen, NoCompressionGen)
       useIdiomaticEndpoints <- Arbitrary.arbBool.arbitrary.map(UseIdiomaticEndpoints(_))

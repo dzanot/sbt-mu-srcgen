@@ -37,7 +37,9 @@ object AvroSrcGeneratorSkeuomorph {
     override def idlType: Model.IdlType = Model.IdlType.Avro
 
     override protected def inputFiles(files: Set[File]): List[File] =
-      files.filter(_.getName.endsWith(AvdlExtension)).toList
+      files.filter{file =>
+        file.getName.endsWith(AvdlExtension) || file.getName.endsWith(AvprExtension)
+      }.toList
 
     override protected def generateFrom(
         inputFile: File,
@@ -68,7 +70,7 @@ object AvroSrcGeneratorSkeuomorph {
       val source = skeuomorphAvroProtocol.map { sap =>
         val muProtocol: MuProtocol[Mu[MuF]] =
           MuProtocol.fromAvroProtocol(skeuomorphCompression, useIdiomaticEndpoints)(sap)
-
+        println(s"muProtocol ${muProtocol}")
         val outputFilePath = getPath(sap)
 
         val streamCtor: (Type, Type) => Type.Apply = streamingImplementation match {
@@ -86,9 +88,15 @@ object AvroSrcGeneratorSkeuomorph {
             .toValidatedNel
             .map(_.syntax.split("\n").toList)
 
-        stringified.map(Generator.Output(outputFilePath, _))
+        val r = stringified.map(Generator.Output(outputFilePath, _))
+
+        println(s"returning output ${r}")
+        r
       }
-      source.toOption
+      println(source)
+      val t = source.toOption
+      println(s"source.toOption ${t}")
+      t
     }
   }
   private def getPath(p: AvroProtocol[Mu[AvroF]]): Path = {

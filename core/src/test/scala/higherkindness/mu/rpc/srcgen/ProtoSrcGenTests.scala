@@ -47,7 +47,7 @@ class ProtoSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest
             files = Set(protoFile("book")),
             serializationType = SerializationType.Protobuf
           )
-          .flatMap { r =>
+          .flatMap {r =>
             r.output.toOption.map(o => (o.path.toString, o.contents.mkString("\n").clean))
           }
           .headOption
@@ -69,7 +69,7 @@ class ProtoSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest
             files = Set(protoFile("book")),
             serializationType = SerializationType.Protobuf
           )
-          .flatMap { r =>
+          .flatMap {r =>
             r.output.toOption.map(o => (o.path.toString, o.contents.mkString("\n").clean))
           }
           .headOption
