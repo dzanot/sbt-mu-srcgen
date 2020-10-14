@@ -17,14 +17,7 @@
 package higherkindness.mu.rpc.srcgen
 
 import java.io.File
-
-import higherkindness.mu.rpc.srcgen.Model.{
-  Fs2Stream,
-  MonixObservable,
-  NoCompressionGen,
-  SerializationType,
-  UseIdiomaticEndpoints
-}
+import higherkindness.mu.rpc.srcgen.Model._
 import higherkindness.mu.rpc.srcgen.proto.ProtoSrcGenerator
 import higherkindness.skeuomorph.ProtobufCompilationException
 import org.scalatest._
@@ -41,13 +34,12 @@ class ProtoSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest
 
     "generate the expected Scala code (FS2 stream)" in {
       val result: Option[(String, String)] =
-        ProtoSrcGenerator
-          .build(NoCompressionGen, UseIdiomaticEndpoints(false), Fs2Stream, new java.io.File("."))
+        ProtoSrcGenerator(Fs2Stream)
           .generateFrom(
             files = Set(protoFile("book")),
             serializationType = SerializationType.Protobuf
           )
-          .flatMap {r =>
+          .flatMap { r =>
             r.output.toOption.map(o => (o.path.toString, o.contents.mkString("\n").clean))
           }
           .headOption
@@ -58,18 +50,12 @@ class ProtoSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest
 
     "generate the expected Scala code (Monix Observable)" in {
       val result: Option[(String, String)] =
-        ProtoSrcGenerator
-          .build(
-            NoCompressionGen,
-            UseIdiomaticEndpoints(false),
-            MonixObservable,
-            new java.io.File(".")
-          )
+        ProtoSrcGenerator(MonixObservable)
           .generateFrom(
             files = Set(protoFile("book")),
             serializationType = SerializationType.Protobuf
           )
-          .flatMap {r =>
+          .flatMap { r =>
             r.output.toOption.map(o => (o.path.toString, o.contents.mkString("\n").clean))
           }
           .headOption
@@ -82,13 +68,7 @@ class ProtoSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest
 
     "throw an exception on an invalid Protobuf schema" in {
       assertThrows[ProtobufCompilationException] {
-        ProtoSrcGenerator
-          .build(
-            NoCompressionGen,
-            UseIdiomaticEndpoints(false),
-            MonixObservable,
-            new java.io.File(".")
-          )
+        ProtoSrcGenerator(MonixObservable)
           .generateFrom(
             files = Set(protoFile("broken")),
             serializationType = SerializationType.Protobuf
@@ -150,7 +130,7 @@ class ProtoSrcGenTests extends AnyWordSpec with Matchers with OneInstancePerTest
        |  val values = findValues
        |}
        |
-       |@service(Protobuf, Identity) trait BookService[F[_]] {
+       |@service(Protobuf, compressionType=Identity, namespace=Some("com.proto")) trait BookService[F[_]] {
        |  def GetBook(req: _root_.com.proto.book.GetBookRequest): F[_root_.com.proto.book.Book]
        |  def GetBooksViaAuthor(req: _root_.com.proto.book.GetBookViaAuthor): F[${streamOf(
       "_root_.com.proto.book.Book"

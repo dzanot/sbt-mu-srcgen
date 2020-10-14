@@ -19,31 +19,43 @@ package higherkindness.mu.rpc.srcgen
 import java.io.File
 import java.nio.file.Path
 
-import higherkindness.mu.rpc.srcgen.Model.{
-  CompressionTypeGen,
-  StreamingImplementation,
-  UseIdiomaticEndpoints
-}
 import higherkindness.mu.rpc.srcgen.avro.AvroSrcGeneratorSkeuomorph
+import higherkindness.mu.rpc.srcgen.Model._
 import higherkindness.mu.rpc.srcgen.openapi.OpenApiSrcGenerator
 import higherkindness.mu.rpc.srcgen.openapi.OpenApiSrcGenerator.HttpImpl
 import higherkindness.mu.rpc.srcgen.proto.ProtoSrcGenerator
+import higherkindness.skeuomorph.mu.CompressionType
 
 object SrcGenApplication {
 
   def apply(
-      compressionType: CompressionTypeGen,
-      useIdiomaticEndpoints: UseIdiomaticEndpoints,
+      compressionTypeGen: CompressionTypeGen,
+      useIdiomaticEndpoints: Boolean,
       streamingImplementation: StreamingImplementation,
       idlTargetDir: File,
       resourcesBasePath: Path,
       httpImpl: HttpImpl
-  ): GeneratorApplication[SrcGenerator] =
+  ): GeneratorApplication[SrcGenerator] = {
+    val compressionType: CompressionType = compressionTypeGen match {
+      case GzipGen          => CompressionType.Gzip
+      case NoCompressionGen => CompressionType.Identity
+    }
     new GeneratorApplication(
-      ProtoSrcGenerator
-        .build(compressionType, useIdiomaticEndpoints, streamingImplementation, idlTargetDir),
-      AvroSrcGeneratorSkeuomorph
-        .build(compressionType, useIdiomaticEndpoints, streamingImplementation),
-      OpenApiSrcGenerator(httpImpl, resourcesBasePath)
+      ProtoSrcGenerator(
+        streamingImplementation,
+        idlTargetDir,
+        compressionType,
+        useIdiomaticEndpoints
+      ),
+      AvroSrcGeneratorSkeuomorph(
+        compressionType,
+        useIdiomaticEndpoints,
+        streamingImplementation
+      ),
+      OpenApiSrcGenerator(
+        httpImpl,
+        resourcesBasePath
+      )
     )
+  }
 }

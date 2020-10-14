@@ -31,9 +31,8 @@ trait Generator {
       files: Set[File],
       serializationType: Model.SerializationType
   ): List[Generator.Result] =
-    inputFiles(files).flatMap(inputFile =>
-      generateFrom(inputFile, serializationType)
-        .map(o => Generator.Result(inputFile, o))
+    inputFiles(files).map(inputFile =>
+      Generator.Result(inputFile, generateFrom(inputFile, serializationType))
     )
 
   protected def inputFiles(files: Set[File]): List[File]
@@ -41,5 +40,5 @@ trait Generator {
   protected def generateFrom(
       inputFile: File,
       serializationType: Model.SerializationType
-  ): Option[ErrorsOr[Generator.Output]]
+  ): ErrorsOr[Generator.Output]
 }

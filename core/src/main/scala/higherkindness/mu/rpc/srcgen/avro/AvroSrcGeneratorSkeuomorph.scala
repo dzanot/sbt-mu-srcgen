@@ -7,15 +7,7 @@ import avrohugger.format.Standard
 import avrohugger.input.parsers.FileInputParser
 import avrohugger.stores.ClassStore
 import cats.data.NonEmptyList
-import higherkindness.mu.rpc.srcgen.Model.{
-  CompressionTypeGen,
-  Fs2Stream,
-  GzipGen,
-  MonixObservable,
-  NoCompressionGen,
-  StreamingImplementation,
-  UseIdiomaticEndpoints
-}
+import higherkindness.mu.rpc.srcgen.Model._
 import higherkindness.mu.rpc.srcgen.{ErrorsOr, Generator, Model, ScalaFileExtension, SrcGenerator}
 import org.apache.avro.Protocol
 import cats.implicits._
@@ -27,9 +19,9 @@ import scala.meta._
 import scala.util.Try
 
 object AvroSrcGeneratorSkeuomorph {
-  def build(
-      compressionTypeGen: CompressionTypeGen,
-      useIdiomaticEndpoints: UseIdiomaticEndpoints,
+  def apply(
+      compressionType: CompressionType,
+      useIdiomaticEndpoints: Boolean,
       streamingImplementation: StreamingImplementation
   ): SrcGenerator = new SrcGenerator {
     private val classStore              = new ClassStore
@@ -37,14 +29,14 @@ object AvroSrcGeneratorSkeuomorph {
     override def idlType: Model.IdlType = Model.IdlType.Avro
 
     override protected def inputFiles(files: Set[File]): List[File] =
-      files.filter{file =>
+      files.filter { file =>
         file.getName.endsWith(AvdlExtension) || file.getName.endsWith(AvprExtension)
       }.toList
 
     override protected def generateFrom(
         inputFile: File,
         serializationType: Model.SerializationType
-    ): Option[ErrorsOr[Generator.Output]] = {
+    ): ErrorsOr[Generator.Output] = {
       val nativeAvroProtocol: ErrorsOr[Protocol] =
         (new FileInputParser)
           .getSchemaOrProtocols(inputFile, Standard, classStore, classLoader)
@@ -62,15 +54,10 @@ object AvroSrcGeneratorSkeuomorph {
             }
         )
 
-      val skeuomorphCompression: CompressionType = compressionTypeGen match {
-        case GzipGen          => CompressionType.Gzip
-        case NoCompressionGen => CompressionType.Identity
-      }
-
-      val source = skeuomorphAvroProtocol.map { sap =>
+      val source = skeuomorphAvroProtocol.andThen { sap =>
         val muProtocol: MuProtocol[Mu[MuF]] =
-          MuProtocol.fromAvroProtocol(skeuomorphCompression, useIdiomaticEndpoints)(sap)
-        println(s"muProtocol ${muProtocol}")
+          MuProtocol.fromAvroProtocol(compressionType, useIdiomaticEndpoints)(sap)
+
         val outputFilePath = getPath(sap)
 
         val streamCtor: (Type, Type) => Type.Apply = streamingImplementation match {
@@ -88,15 +75,9 @@ object AvroSrcGeneratorSkeuomorph {
             .toValidatedNel
             .map(_.syntax.split("\n").toList)
 
-        val r = stringified.map(Generator.Output(outputFilePath, _))
-
-        println(s"returning output ${r}")
-        r
+        stringified.map(Generator.Output(outputFilePath, _))
       }
-      println(source)
-      val t = source.toOption
-      println(s"source.toOption ${t}")
-      t
+      source
     }
   }
   private def getPath(p: AvroProtocol[Mu[AvroF]]): Path = {

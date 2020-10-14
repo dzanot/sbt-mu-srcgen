@@ -18,7 +18,8 @@ package higherkindness.mu.rpc.srcgen
 
 import higherkindness.mu.rpc.srcgen.Model.SerializationType._
 import higherkindness.mu.rpc.srcgen.Model._
-import org.scalacheck.{Arbitrary, Gen}
+import higherkindness.skeuomorph.mu.CompressionType
+import org.scalacheck._
 
 trait AvroScalaGeneratorArbitrary {
 
@@ -27,29 +28,25 @@ trait AvroScalaGeneratorArbitrary {
       expectedOutput: List[String],
       expectedOutputFilePath: String,
       serializationType: SerializationType,
-      marshallersImports: List[MarshallersImport],
-      compressionTypeGen: CompressionTypeGen,
-      useIdiomaticEndpoints: UseIdiomaticEndpoints
+      compressionType: CompressionType,
+      streamingImplementation: StreamingImplementation,
+      useIdiomaticEndpoints: Boolean = true
   )
 
   def generateOutput(
       serializationType: SerializationType,
-      marshallersImports: List[MarshallersImport],
-      compressionTypeGen: CompressionTypeGen,
-      useIdiomaticEndpoints: UseIdiomaticEndpoints
+      compressionType: CompressionType,
+      useIdiomaticEndpoints: Boolean = true
   ): List[String] = {
 
-    val imports: String = ("import _root_.higherkindness.mu.rpc.protocol._" :: marshallersImports
-      .map(_.marshallersImport)
-      .map("import " + _)).sorted
-      .mkString("\n")
+    val imports: String = "import _root_.higherkindness.mu.rpc.protocol._"
 
-    val serviceParams: Seq[String] =
-      serializationType.toString ::
-        s"${compressionTypeGen.value}" ::
-        List(s"""namespace = Some("foo.bar")""", "methodNameStyle = Capitalize").filter(_ =>
-          useIdiomaticEndpoints
-        )
+    val serviceParams: String = Seq(
+      serializationType.toString,
+      s"compressionType = $compressionType",
+      if (useIdiomaticEndpoints) s"""namespace = Some("foo.bar")"""
+      else "namespace = None"
+    ).mkString(", ")
 
     s"""
          |package foo.bar
@@ -60,11 +57,12 @@ trait AvroScalaGeneratorArbitrary {
          |
          |final case class HelloResponse(arg1: _root_.java.lang.String, arg2: _root_.scala.Option[_root_.java.lang.String], arg3: _root_.scala.List[_root_.java.lang.String])
          |
-         |@service(${serviceParams.mkString(", ")}) trait MyGreeterService[F[_]] {
+
+         |@service($serviceParams) trait MyGreeterService[F[_]] {
          |
-         |  def sayHelloAvro(arg: _root_.foo.bar.HelloRequest): F[_root_.foo.bar.HelloResponse]
+         |  def sayHelloAvro(req: _root_.foo.bar.HelloRequest): F[_root_.foo.bar.HelloResponse]
          |
-         |  def sayNothingAvro(arg: _root_.higherkindness.mu.rpc.protocol.Empty.type): F[_root_.higherkindness.mu.rpc.protocol.Empty.type]
+         |  def sayNothingAvro(req: _root_.higherkindness.mu.rpc.protocol.Empty.type): F[_root_.higherkindness.mu.rpc.protocol.Empty.type]
          |
          |}""".stripMargin.split("\n").filter(_.length > 0).toList
   }
@@ -79,44 +77,24 @@ trait AvroScalaGeneratorArbitrary {
         Gen.listOfN(_, importSliceGen).map(_.mkString(".") + "._").map(CustomMarshallersImport)
       )
 
-  def marshallersImportGen(serializationType: SerializationType): Gen[MarshallersImport] =
-    serializationType match {
-      case Avro | AvroWithSchema =>
-        Gen.oneOf(
-          Gen.const(BigDecimalAvroMarshallers),
-          Gen.const(JodaDateTimeAvroMarshallers),
-          customMarshallersImportsGen
-        )
-      case Protobuf =>
-        Gen.oneOf(
-          Gen.const(BigDecimalProtobufMarshallers),
-          Gen.const(JavaTimeDateAvroMarshallers),
-          Gen.const(JavaTimeDateProtobufMarshallers),
-          Gen.const(JodaDateTimeProtobufMarshallers),
-          customMarshallersImportsGen
-        )
-      case _ => customMarshallersImportsGen
-    }
-
   implicit val scenarioArb: Arbitrary[Scenario] = Arbitrary {
     for {
-      inputResourcePath     <- Gen.oneOf("/avro/GreeterService.avpr", "/avro/GreeterService.avdl")
-      serializationType     <- Gen.const(Avro)
-      marshallersImports    <- Gen.listOf(marshallersImportGen(serializationType))
-      compressionTypeGen    <- Gen.oneOf(GzipGen, NoCompressionGen)
-      useIdiomaticEndpoints <- Arbitrary.arbBool.arbitrary.map(UseIdiomaticEndpoints(_))
+      inputResourcePath       <- Gen.oneOf("/avro/GreeterService.avpr", "/avro/GreeterService.avdl")
+      serializationType       <- Gen.const(Avro)
+      compressionType         <- Gen.oneOf(CompressionType.Gzip, CompressionType.Identity)
+      streamingImplementation <- Gen.oneOf(MonixObservable, Fs2Stream)
+      useIdiomaticEndpoints   <- Arbitrary.arbBool.arbitrary
     } yield Scenario(
       inputResourcePath,
       generateOutput(
         serializationType,
-        marshallersImports,
-        compressionTypeGen,
+        compressionType,
         useIdiomaticEndpoints
       ),
       "foo/bar/MyGreeterService.scala",
       serializationType,
-      marshallersImports,
-      compressionTypeGen,
+      compressionType,
+      streamingImplementation,
       useIdiomaticEndpoints
     )
   }

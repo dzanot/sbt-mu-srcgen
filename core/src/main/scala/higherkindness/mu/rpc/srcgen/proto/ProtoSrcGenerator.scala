@@ -27,15 +27,9 @@ import cats.data.Validated._
 import higherkindness.droste.data.Mu
 import higherkindness.droste.data.Mu._
 import higherkindness.mu.rpc.srcgen.Model._
-import higherkindness.mu.rpc.srcgen.Model.{
-  CompressionTypeGen,
-  GzipGen,
-  NoCompressionGen,
-  StreamingImplementation,
-  UseIdiomaticEndpoints
-}
 import higherkindness.mu.rpc.srcgen._
 import higherkindness.skeuomorph.mu.{CompressionType, MuF}
+import higherkindness.skeuomorph.{mu => skeuomorph}
 import higherkindness.skeuomorph.protobuf.ParseProto.{parseProto, ProtoSource}
 import higherkindness.skeuomorph.protobuf.{ProtobufF, Protocol}
 
@@ -45,11 +39,11 @@ object ProtoSrcGenerator {
     override def toString: String = s"ProtoBufSrcGenException: $message"
   }
 
-  def build(
-      compressionTypeGen: CompressionTypeGen,
-      useIdiomaticEndpoints: UseIdiomaticEndpoints,
+  def apply(
       streamingImplementation: StreamingImplementation,
-      idlTargetDir: File
+      idlTargetDir: File = new File("."),
+      compressionType: CompressionType = CompressionType.Identity,
+      useIdiomaticEndpoints: Boolean = true
   ): SrcGenerator =
     new SrcGenerator {
 
@@ -61,34 +55,23 @@ object ProtoSrcGenerator {
       def generateFrom(
           inputFile: File,
           serializationType: SerializationType
-      ): Option[ErrorsOr[Generator.Output]] =
-        getCode[IO](inputFile).map(Some(_)).unsafeRunSync.map { case (p, c) =>
-          c.map(Generator.Output(Paths.get(p), _))
-        }
+      ): ErrorsOr[Generator.Output] =
+        getCode[IO](inputFile)
+          .map { case (p, c) =>
+            c.map(Generator.Output(Paths.get(p), _))
+          }
+          .unsafeRunSync()
 
       val streamCtor: (Type, Type) => Type.Apply = streamingImplementation match {
         case Fs2Stream       => { case (f, a) => t"_root_.fs2.Stream[$f, $a]" }
         case MonixObservable => { case (_, a) => t"_root_.monix.reactive.Observable[$a]" }
       }
 
-      val skeuomorphCompression: CompressionType = compressionTypeGen match {
-        case GzipGen          => CompressionType.Gzip
-        case NoCompressionGen => CompressionType.Identity
-      }
+      val transformToMuProtocol: Protocol[Mu[ProtobufF]] => skeuomorph.Protocol[Mu[MuF]] =
+        skeuomorph.Protocol.fromProtobufProto(compressionType, useIdiomaticEndpoints)
 
-      val transformToMuProtocol: Protocol[Mu[ProtobufF]] => higherkindness.skeuomorph.mu.Protocol[
-        Mu[
-          MuF
-        ]
-      ] =
-        higherkindness.skeuomorph.mu.Protocol
-          .fromProtobufProto(skeuomorphCompression, useIdiomaticEndpoints)
-
-      val generateScalaSource: higherkindness.skeuomorph.mu.Protocol[Mu[MuF]] => Either[
-        String,
-        String
-      ] =
-        higherkindness.skeuomorph.mu.codegen.protocol(_, streamCtor).map(_.syntax)
+      val generateScalaSource: skeuomorph.Protocol[Mu[MuF]] => Either[String, String] =
+        skeuomorph.codegen.protocol(_, streamCtor).map(_.syntax)
 
       val splitLines: String => List[String] = _.split("\n").toList
 
